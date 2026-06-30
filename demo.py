@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo script for vigil — Runtime Enforcement for Agent Skill Specifications.
+Demo script for skillruled — Runtime Enforcement for Agent Skill Specifications.
 
 Loads example_skill.md, compiles a policy via LongCat, runs 4 test tool calls
 through enforce(), and exits 0 only if all verdicts match expectations.
@@ -9,7 +9,7 @@ through enforce(), and exits 0 only if all verdicts match expectations.
 import os
 import sys
 
-from vigil import parse_skill, compile_policy, enforce, save_policy
+from skillruled import parse_skill, compile_policy, enforce, save_policy
 
 
 def main():

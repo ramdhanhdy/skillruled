@@ -1,5 +1,5 @@
 """
-vigil — Runtime Enforcement for Agent Skill Specifications.
+skillruled — Runtime Enforcement for Agent Skill Specifications.
 
 Parses SKILL.md specs with NL boundaries, compiles them into policy rules
 via an LLM (LongCat-2.0), and gates tool calls at runtime.

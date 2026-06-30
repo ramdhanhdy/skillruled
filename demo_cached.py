@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo script for vigil — Cached enforcement (no LLM call).
+Demo script for skillruled — Cached enforcement (no LLM call).
 
 Loads policy_cache.json (produced by demo.py), runs the same 4 test tool
 calls through enforce(), and exits 0 only if all verdicts match expectations.
@@ -11,7 +11,7 @@ It is purely cache-driven.
 
 import sys
 
-from vigil import load_policy, enforce
+from skillruled import load_policy, enforce
 
 
 def main():
@@ -64,7 +64,7 @@ def main():
     print("--- Injection Safety Tests ---")
     print()
 
-    from vigil import Policy, Rule
+    from skillruled import Policy, Rule
 
     malicious_policy = Policy(rules=[
         Rule(tool="*", verdict="allow", condition="inject",

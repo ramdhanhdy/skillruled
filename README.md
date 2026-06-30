@@ -1,10 +1,22 @@
-# vigil
+# skillruled
 
-vigil is a runtime enforcement library for agent skill specifications. It reads
+skillruled is a runtime enforcement library for agent skill specifications. It reads
 SKILL.md-style specs with natural-language boundaries, uses the LongCat-2.0 LLM
 to compile those boundaries into structured policy rules with evaluable
 predicates, and gates tool calls against the compiled policy at runtime
 (first-match-wins, default-deny).
+
+## Attribution
+
+This project is an independent implementation inspired by the concepts described in:
+
+> **VIGIL: Runtime Reference Monitors for Agent Skill Specifications**
+> arXiv:2606.26524 (published 2026-06-25)
+
+The VIGIL paper formalizes the idea of translating natural-language skill
+boundaries into runtime reference monitors. This library is not affiliated with
+or endorsed by the paper's authors. It is an independent, minimal implementation
+of that concept.
 
 ## Setup
 
