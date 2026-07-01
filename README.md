@@ -33,7 +33,9 @@ SKILL.md (NL boundaries)
 ## Quick start
 
 ```bash
-pip install skillruled
+git clone https://github.com/ramdhanhdy/skillruled.git
+cd skillruled
+pip install -e .
 ```
 
 ### Compile a skill (requires LLM API key)
@@ -128,15 +130,17 @@ VIGIL paper, though no shipped implementation from that work was found.
 ## Project structure
 
 ```
-skillruled.py          # Core library (262 lines, stdlib-only)
+skillruled.py          # Core library: parse, compile, enforce, CLI, adapter
 demo.py                # Live demo (requires LONGCAT_API_KEY)
 demo_cached.py         # Cached demo (no API key needed)
 example_skill.md       # Example SKILL.md spec
 policy_cache.json      # Pre-built policy for cached demo
 tests/
-  test_evaluator.py    # 36 tests: AST operators, mutations, injection
-  test_cached_workflow.py  # 8 tests: cache loading, enforcement, roundtrip
-pyproject.toml         # Packaging
+  test_evaluator.py          # 36 tests: AST operators, mutations, injection
+  test_cached_workflow.py    # 8 tests: cache loading, enforcement, roundtrip
+  test_cli_provenance_diff.py # 10 tests: CLI, provenance, diff
+  test_adapter.py            # 10 tests: SkillGuardedTool decorator
+pyproject.toml         # Packaging (not yet on PyPI)
 ```
 
 ## Testing
