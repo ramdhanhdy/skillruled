@@ -176,29 +176,55 @@ _ALLOWED_NODES = frozenset({
     ast.Expression, ast.BoolOp, ast.UnaryOp, ast.Compare, ast.Call,
     ast.Attribute, ast.Constant, ast.Name, ast.Tuple, ast.List, ast.keyword,
     ast.Load,
+    # Comparison operators (sub-nodes of ast.Compare)
+    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.In, ast.NotIn,
+    # Boolean operators (sub-nodes of ast.BoolOp)
+    ast.And, ast.Or,
+    # Unary not operator (sub-node of ast.UnaryOp)
+    ast.Not,
 })
 _ALLOWED_NAMES = frozenset({"args", "tool", "True", "False", "None"})
+
+# Methods that mutate the args dict — blocked to keep enforcement side-effect-free
+_MUTATING_METHODS = frozenset({
+    "clear", "pop", "popitem", "update", "setdefault", "__setitem__",
+    "remove", "discard", "sort", "reverse", "append", "extend", "insert",
+})
+
+# Dangerous builtins/names blocked even if they appear in the namespace
+_BLOCKED_NAMES = frozenset({
+    "__import__", "open", "exec", "eval", "compile", "globals", "locals",
+    "getattr", "setattr", "delattr", "hasattr", "vars", "dir", "type",
+    "object", "input", "breakpoint", "exit", "quit",
+})
 
 
 def safe_eval_predicate(predicate: str, args: dict, tool: str) -> bool:
     """Validate a predicate via AST, then eval it in a restricted namespace.
 
-    Raises ValueError if any disallowed node type, dunder attribute, or
-    non-whitelisted name is found.  Returns the boolean result of the
-    evaluated expression.
+    Raises ValueError if any disallowed node type, dunder attribute,
+    non-whitelisted name, or mutating method is found.
+    Returns the boolean result of the evaluated expression.
     """
+    import types
+
     tree = ast.parse(predicate, mode="eval")
     for node in ast.walk(tree):
         if type(node) not in _ALLOWED_NODES:
             raise ValueError(f"Disallowed node type: {type(node).__name__}")
-        if isinstance(node, ast.Attribute) and "__" in node.attr:
-            raise ValueError(f"Blocked dunder attribute: {node.attr}")
+        if isinstance(node, ast.Attribute):
+            if "__" in node.attr:
+                raise ValueError(f"Blocked dunder attribute: {node.attr}")
+            if node.attr in _MUTATING_METHODS:
+                raise ValueError(f"Blocked mutating method: {node.attr}")
         if isinstance(node, ast.Name) and node.id not in _ALLOWED_NAMES:
             raise ValueError(f"Blocked name: {node.id}")
         if isinstance(node, ast.UnaryOp) and not isinstance(node.op, ast.Not):
             raise ValueError(f"Blocked unary operator: {type(node.op).__name__}")
     code = compile(tree, "<predicate>", "eval")
-    return bool(eval(code, {"__builtins__": {}}, {"args": args, "tool": tool}))
+    # Pass args as an immutable MappingProxyType so mutation raises TypeError
+    safe_args = types.MappingProxyType(dict(args)) if isinstance(args, dict) else args
+    return bool(eval(code, {"__builtins__": {}}, {"args": safe_args, "tool": tool}))
 
 
 # ---------------------------------------------------------------------------

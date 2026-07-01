@@ -1,64 +1,151 @@
 # skillruled
 
-skillruled is a runtime enforcement library for agent skill specifications. It reads
-SKILL.md-style specs with natural-language boundaries, uses the LongCat-2.0 LLM
-to compile those boundaries into structured policy rules with evaluable
-predicates, and gates tool calls against the compiled policy at runtime
-(first-match-wins, default-deny).
+skillruled is a runtime enforcement library for agent skill specifications. It parses
+SKILL.md-style files containing natural-language permission boundaries, uses an LLM
+to compile those boundaries into structured policy rules with evaluable Python
+predicate expressions, and gates tool calls at runtime using a first-match-wins,
+default-deny enforcement engine. Compiled policies can be cached to JSON for
+offline enforcement with no LLM in the decision path.
 
-## Attribution
+> **Inspired by** the VIGIL paper: "Vigil: Runtime Enforcement of Behavioral
+> Specifications in AI Agent Skills" (arXiv:2606.26524). skillruled is an
+> independent prototype that explores a minimal Python implementation of
+> that concept with JSON policy caching and AST-validated predicates.
 
-This project is an independent implementation inspired by the concepts described in:
+## How it works
 
-> **VIGIL: Runtime Reference Monitors for Agent Skill Specifications**
-> arXiv:2606.26524 (published 2026-06-25)
+```
+SKILL.md (NL boundaries)
+       │
+       ▼
+  compile_policy()  ── LLM (LongCat-2.0) ──►  Policy (structured rules)
+       │                                           │
+       ▼                                           ▼
+  save_policy() ──► policy.json ──► load_policy()
+                                          │
+                                          ▼
+                                    enforce(tool_call, policy)
+                                          │
+                                     ALLOW / DENY
+                              (no LLM call at decision time)
+```
 
-The VIGIL paper formalizes the idea of translating natural-language skill
-boundaries into runtime reference monitors. This library is not affiliated with
-or endorsed by the paper's authors. It is an independent, minimal implementation
-of that concept.
+## Quick start
 
-## Setup
+```bash
+pip install skillruled
+```
 
-Set your LongCat API key:
+### Compile a skill (requires LLM API key)
 
-    export LONGCAT_API_KEY=your-key-here
+```python
+from skillruled import parse_skill, compile_policy, enforce, save_policy
 
-## Run
+skill = parse_skill("skills/my-skill.md")
+policy = compile_policy(skill.boundaries, api_key="...")
+save_policy(policy, "policy.json")
 
-    python3 demo.py
+result = enforce({"tool": "read_file", "args": {"path": "/etc/passwd"}}, policy)
+print(result.verdict)  # "deny"
+```
 
-The demo loads `example_skill.md`, compiles a policy via LongCat, and runs 4
-test tool calls (1 allow, 3 deny). It exits 0 if all verdicts match expectations.
+### Enforce from cache (no LLM, no API key)
 
-## Caching
+```python
+from skillruled import load_policy, enforce
 
-After compiling a policy, `demo.py` saves it to `policy_cache.json` via
-`save_policy()`. You can then enforce the cached policy without any LLM call
-and without `LONGCAT_API_KEY`:
+policy = load_policy("policy.json")
+result = enforce({"tool": "read_file", "args": {"path": "/tmp/data.csv"}}, policy)
+print(result.verdict)  # "allow"
+```
 
-    python3 demo.py          # compiles via LongCat + saves policy_cache.json
-    python3 demo_cached.py  # loads policy_cache.json + enforces (no LLM call)
+### Run the cached demo
 
-The cache is a human-readable JSON file with a `"rules"` array. Each rule has
-`tool`, `verdict`, `condition`, and `predicate` fields. This proves the LLM is
-only needed at compile time, not at enforcement time.
+```bash
+python demo_cached.py
+```
 
-## Security
+This runs without any API key — it loads the pre-built `policy_cache.json`.
 
-Predicates are validated with `safe_eval_predicate()` before evaluation. This
-function parses each predicate into an AST and rejects any expression that
-contains:
+## SKILL.md format
 
-- Disallowed node types (only Expression, BoolOp, UnaryOp(Not), Compare, Call,
-  Attribute, Constant, Name, Tuple, List, keyword are permitted)
-- Dunder attribute access (any attribute containing `__`, e.g. `__class__`,
-  `__subclasses__`)
-- Non-whitelisted names (only `args`, `tool`, `True`, `False`, `None` are
-  allowed — `__import__`, `open`, `exec`, `getattr` are all blocked)
-- Non-`Not` unary operators
+```markdown
+---
+name: csv-analyzer
+allowed_tools: read_file
+---
 
-Rejected predicates raise `ValueError`, which `enforce()` catches and treats
-as a non-match, falling through to default-deny. Dangerous predicates like
-`__import__('os').system(...)`, `open('/etc/passwd').read()`, and
-`exec(...)` are therefore blocked before they can execute.
+## Boundaries
+
+1. Only read files under /tmp/.
+2. Never make HTTP requests.
+3. Never write files.
+```
+
+The natural-language boundaries are compiled into predicate rules like:
+
+| Tool | Verdict | Condition | Predicate |
+|---|---|---|---|
+| read_file | allow | path under /tmp/ | `args.get('path', '').startswith('/tmp/')` |
+| read_file | deny | path not under /tmp/ | `True` |
+| http_request | deny | any HTTP request | `True` |
+| write_file | deny | any write | `True` |
+
+## AST-validated predicates
+
+Predicates are validated through a restricted Python AST evaluator that:
+
+- **Whitelists**: method calls (`.startswith()`, `.endswith()`, `.get()`),
+  comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not in`),
+  boolean operators (`and`, `or`, `not`), and constants
+- **Blocks**: dangerous names (`__import__`, `open`, `exec`, `eval`),
+  dunder attributes, and mutating methods (`clear`, `pop`, `update`)
+- **Enforces immutability**: `args` is passed as a `MappingProxyType` so
+  mutation raises `TypeError` at runtime
+
+**Limitations**: The current evaluator supports method-call predicates,
+comparisons, and boolean logic. It is not a complete security sandbox --
+do not use in adversarial scenarios where the agent may bypass the
+enforcement layer. Library-level enforcement can be bypassed if tool
+calls do not route through it.
+
+## Positioning
+
+Among reviewed open-source tools, skillruled explores compiling SKILL.md
+NL boundaries into cached predicates -- a niche also described in the
+VIGIL paper, though no shipped implementation from that work was found.
+
+| Tool | NL→policy | Skill-spec native | JSON caching | Deterministic | Embeddable |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **skillruled** | yes | yes | yes | yes | yes |
+| SkillGuard | no | yes | no | hybrid | partial |
+| IronCurtain | yes | no | no | yes | no |
+| MCP Visor | no | no | no | yes | no |
+| Mirage | no | no | no | yes | no |
+| Lilith | yes | no | partial | n/a | no |
+| PCAS | no | no | no | yes | no |
+
+## Project structure
+
+```
+skillruled.py          # Core library (262 lines, stdlib-only)
+demo.py                # Live demo (requires LONGCAT_API_KEY)
+demo_cached.py         # Cached demo (no API key needed)
+example_skill.md       # Example SKILL.md spec
+policy_cache.json      # Pre-built policy for cached demo
+tests/
+  test_evaluator.py    # 36 tests: AST operators, mutations, injection
+  test_cached_workflow.py  # 8 tests: cache loading, enforcement, roundtrip
+pyproject.toml         # Packaging
+```
+
+## Testing
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+## License
+
+MIT

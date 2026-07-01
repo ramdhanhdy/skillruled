@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 policy_cache.json
+skillruled.egg-info/
